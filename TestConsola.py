@@ -8,8 +8,7 @@ def main():
     # colocar el headset unos 4 minutos antes para que se estabilice
     # el Global Headset Unique Identifier está en la zona de la batería
     mw = MindWave( "/dev/ttyUSB0", 1000, 0xF6, 0x4F )
-    err = mw.connect()
-    if( err ):
+    if( mw.connect() ):
         for i in range( 500 ):
             mwd = mw.getMindWaveData()
             print "Main [", i, "]:", mw.getGlobalHeadsetID(),
