@@ -9,19 +9,19 @@ from rcr.utils.Serial import Serial
 from rcr.utils import Utils
 
 class MindWaveData:
-    poorSignalQuality = 0           # byte
-    attentionESense = 0             # byte
-    meditationESense = 0            # byte
-    blinkStrength = 0               # byte
-    rawWave16Bit = 0                # int16
-    delta = 0                       # uint32
-    theta = 0                       # uint32
-    lowAlpha = 0                    # uint32
-    highAlpha = 0                   # uint32
-    lowBeta = 0                     # uint32
-    highBeta = 0                    # uint32
-    lowGamma = 0                    # uint32
-    midGamma = 0                    # uint32
+    poorSignalQuality = 0           # byte      (0 <=> 200) 0=OK; 200=sensor sin contacto con la piel
+    attentionESense = 0             # byte      (1 <=> 100) 0=no confiable
+    meditationESense = 0            # byte      (1 <=> 100) 0=no confiable
+    blinkStrength = 0               # byte      (1 <=> 255)
+    rawWave16Bit = 0                # int16     (-32768 <=> 32767)
+    delta = 0                       # uint32    (0 <=> 16777215)
+    theta = 0                       # uint32    (0 <=> 16777215)
+    lowAlpha = 0                    # uint32    (0 <=> 16777215)
+    highAlpha = 0                   # uint32    (0 <=> 16777215)
+    lowBeta = 0                     # uint32    (0 <=> 16777215)
+    highBeta = 0                    # uint32    (0 <=> 16777215)
+    lowGamma = 0                    # uint32    (0 <=> 16777215)
+    midGamma = 0                    # uint32    (0 <=> 16777215)
 
 class MindWave():
     def __init__( self, port, timeout, ghid_high, ghid_low ):
@@ -32,19 +32,19 @@ class MindWave():
         self.connected = False
         self.conn = None
         self.mutex = threading.Lock()
-        self.poorSignalQuality = 0           # byte
-        self.attentionESense = 0             # byte
-        self.meditationESense = 0            # byte
-        self.blinkStrength = 0               # byte
-        self.rawWave16Bit = 0                # int16
-        self.delta = 0                       # uint32
-        self.theta = 0                       # uint32
-        self.lowAlpha = 0                    # uint32
-        self.highAlpha = 0                   # uint32
-        self.lowBeta = 0                     # uint32
-        self.highBeta = 0                    # uint32
-        self.lowGamma = 0                    # uint32
-        self.midGamma = 0                    # uint32
+        self.poorSignalQuality = 0           # byte      (0 <=> 200) 0=OK; 200=sensor sin contacto con la piel
+        self.attentionESense = 0             # byte      (1 <=> 100) 0=no confiable
+        self.meditationESense = 0            # byte      (1 <=> 100) 0=no confiable
+        self.blinkStrength = 0               # byte      (1 <=> 255)
+        self.rawWave16Bit = 0                # int16     (-32768 <=> 32767)
+        self.delta = 0                       # uint32    (0 <=> 16777215)
+        self.theta = 0                       # uint32    (0 <=> 16777215)
+        self.lowAlpha = 0                    # uint32    (0 <=> 16777215)
+        self.highAlpha = 0                   # uint32    (0 <=> 16777215)
+        self.lowBeta = 0                     # uint32    (0 <=> 16777215)
+        self.highBeta = 0                    # uint32    (0 <=> 16777215)
+        self.lowGamma = 0                    # uint32    (0 <=> 16777215)
+        self.midGamma = 0                    # uint32    (0 <=> 16777215)
 
     def connect( self ):
         if( self.connected ):
@@ -64,6 +64,7 @@ class MindWave():
         print "MindWave Connect(): Limpiando conexión previa =>",
         sys.stdout.flush()
         try:
+            # request "Disconnect"
             conn.write( bytearray( [ 0xc1 ] ) )
         except Exception as e:
             conn.close()
@@ -72,16 +73,17 @@ class MindWave():
         conn.flushRead( 1000 )
         print "OK"
 
-
         # conecta con/sin Global Headset Unique Identifier (ghid)
         try:
             if( self.ghid_high != 0  or self.ghid_low != 0):
                 print "MindWave Connect(): Enlazando headset =>",
                 sys.stdout.flush()
+                # request "Connect"
                 conn.write( bytearray( [ 0xc0, self.ghid_high, self.ghid_low ] ) )
             else:
                 print "MindWave Connect(): Buscando headset =>",
                 sys.stdout.flush()
+                # request "Auto-Connect"
                 conn.write( bytearray( [ 0xc2 ] ) )
         except Exception as e:
             conn.close()
@@ -93,12 +95,15 @@ class MindWave():
         while True:
             sys.stdout.write( "." )
             sys.stdout.flush()
+
+            # lee respuesta
             payload, err = self.parsePacket()
             if( err != None ):
-                if( err == "ErrChecksum" ):
+                if( err == "ErrChecksum" ):     # se deben ignorar los errores de checksum
                     continue
                 break
 
+            # analiza respuesta
             cmd = payload[0]
             if( cmd == 0xd0 ):                  # headset found and connected
                 self.ghid_high = payload[2]
@@ -116,8 +121,8 @@ class MindWave():
             if( cmd == 0xd3 ):                  # request denied
                 err = "ErrRequestDenied"
                 break
-            if( cmd == 0xd4 ):                  # dongle in stand by mode
-                if( payload[2] == 0x00 ):
+            if( cmd == 0xd4 ):
+                if( payload[2] == 0x00 ):       # dongle in stand by mode
                     break
                 else:                           # searching
                     Utils.pause( 1 )
@@ -143,11 +148,14 @@ class MindWave():
     def _TRead( self, *args ):
         self._trunning = True
         while self._trunning:
-            print "TRead"
-            sys.stdout.flush()
+            #print "TRead"
+            #sys.stdout.flush()
+
+            # lee y procesa paquete recibido
             err = self.parsePayload()
             if( err != None ):
                 print "MindWave: ", err
+
             # requerido para el scheduler
             Utils.pause( 10 )
 
@@ -159,6 +167,7 @@ class MindWave():
             self._tread.join()
             print "OK"
 
+            # request "Disconnect"
             print "MindWave Disconnect(): Desconectando headset y cerrando puerta =>",
             sys.stdout.flush()
             self.conn.write( bytearray( [ 0xc1 ] ) )
@@ -265,7 +274,7 @@ class MindWave():
             pos = pos + vlength
 
             if( exCodeLevel == 0 ):
-                if( code == 0x02 ):    # poor signal quality (0 to 255) 200 => no skin contact
+                if( code == 0x02 ):    # poor signal quality (0 to 255) 0=>OK; 200 => no skin contact
                         self.poorSignalQuality = data[0]
                 elif( code == 0x04 ):  # attention eSense (0 to 100) 40-60 => neutral, 0 => result is unreliable
                         self.attentionESense = data[0]
@@ -281,7 +290,7 @@ class MindWave():
                 elif( code == 0x83 ):  # asic eeg power struct (8, 3 bytes unsigned int big indian)
                         self.delta     = ( data[0]<<16 ) + ( data[1]<<8 ) + data[2]
                         self.theta     = ( data[3]<<16 ) + ( data[4]<<8 ) + data[5]
-                        self.lowAlpha  = ( data[6]<<16 ) + ( data[7]<<8 ) + data[7]
+                        self.lowAlpha  = ( data[6]<<16 ) + ( data[7]<<8 ) + data[8]
                         self.highAlpha = ( data[9]<<16 ) + ( data[10]<<8 ) + data[11]
                         self.lowBeta   = ( data[12]<<16 ) + ( data[13]<<8 ) + data[14]
                         self.highBeta  = ( data[15]<<16 ) + ( data[16]<<8 ) + data[17]
@@ -294,6 +303,6 @@ class MindWave():
                 # elif( code == 0x81 ):  # eeg power struct (legacy float)
                 # elif( code == 0x86 ):  # rrinterval (0 to 65535)
                 else:
-                    print "ExCodeLevel: %02x, Code: %02x, Data: [%02x]\n" % ( exCodeLevel, code, data )
+                    print "ExCodeLevel: %02x, Code: %02x, Data: [%s]\n" % ( exCodeLevel, code, ''.join(format(x, '02X') for x in data) )
         self.mutex.release()
         return None
