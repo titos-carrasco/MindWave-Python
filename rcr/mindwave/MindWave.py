@@ -37,14 +37,14 @@ class MindWave():
         self.meditationESense = 0            # byte      (1 <=> 100) 0=no confiable
         self.blinkStrength = 0               # byte      (1 <=> 255)
         self.rawWave16Bit = 0                # int16     (-32768 <=> 32767)
-        self.delta = 0                       # uint32    (0 <=> 16777215)
-        self.theta = 0                       # uint32    (0 <=> 16777215)
-        self.lowAlpha = 0                    # uint32    (0 <=> 16777215)
-        self.highAlpha = 0                   # uint32    (0 <=> 16777215)
-        self.lowBeta = 0                     # uint32    (0 <=> 16777215)
-        self.highBeta = 0                    # uint32    (0 <=> 16777215)
-        self.lowGamma = 0                    # uint32    (0 <=> 16777215)
-        self.midGamma = 0                    # uint32    (0 <=> 16777215)
+        self.delta = 0                       # uint24    (0 <=> 16777215)
+        self.theta = 0                       # uint24    (0 <=> 16777215)
+        self.lowAlpha = 0                    # uint24    (0 <=> 16777215)
+        self.highAlpha = 0                   # uint24    (0 <=> 16777215)
+        self.lowBeta = 0                     # uint24    (0 <=> 16777215)
+        self.highBeta = 0                    # uint24    (0 <=> 16777215)
+        self.lowGamma = 0                    # uint24    (0 <=> 16777215)
+        self.midGamma = 0                    # uint24    (0 <=> 16777215)
 
     def connect( self ):
         if( self.connected ):
