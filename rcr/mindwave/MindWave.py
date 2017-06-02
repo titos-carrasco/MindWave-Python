@@ -262,11 +262,10 @@ class MindWave():
         # 0xaa 0xaa
         while( True ):
             b = self.conn.read( 1 )[0]
-            if( b != 0xaa ):
-                continue
-            b = self.conn.read( 1 )[0]
             if( b == 0xaa ):
-                break
+                b = self.conn.read( 1 )[0]
+                if( b == 0xaa ):
+                    break
 
         # packet length
         plength = self.conn.read( 1 )[0]
