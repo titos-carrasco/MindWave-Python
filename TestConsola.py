@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from rcr.mindwave.MindWave import MindWave
+from rcr.mindwave.MindWave import *
 from rcr.utils import Utils
 
 def main():
@@ -9,8 +9,9 @@ def main():
     # el Global Headset Unique Identifier está en la zona de la batería
     mw = MindWave( "/dev/ttyUSB0", 1000, 0x00, 0x00 )
     if( mw.connect() ):
+        mwd = MindWaveData()
         for i in range( 1000 ):
-            mwd = mw.getMindWaveData()
+            mwd = mw.fillMindWaveData( mwd )
             print "Main [", i, "]:", mw.getGlobalHeadsetID(),
             print mwd.poorSignalQuality,
             print mwd.attentionESense,
@@ -28,6 +29,7 @@ def main():
 
             # requerido para el scheduler
             Utils.pause( 10 )
+        print i, "lecturas realizadas"
         mw.disconnect()
 
 

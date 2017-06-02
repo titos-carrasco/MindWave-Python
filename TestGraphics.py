@@ -4,7 +4,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from rcr.mindwave.MindWave import MindWave
+from rcr.mindwave.MindWave import *
 from rcr.utils import Utils
 
 
@@ -15,12 +15,13 @@ def main():
     delta = []
     theta = []
 
-    npts = 20
+    npts = 30
     mw = MindWave( "/dev/ttyUSB0", 1000, 0x00, 0x00 )
     if( mw.connect() ):
+        mwd = MindWaveData()
         while( True ):
             try:
-                mwd = mw.getMindWaveData()
+                mwd = mw.fillMindWaveData( mwd )
                 print mwd.poorSignalQuality, mwd.attentionESense, mwd.meditationESense, mwd.delta, mwd.theta
                 attentionESense.append( mwd.attentionESense );
                 meditationESense.append( mwd.meditationESense );
