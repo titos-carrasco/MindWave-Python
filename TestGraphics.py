@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -21,7 +22,7 @@ def main():
         while( True ):
             try:
                 mw.fillMindWaveData( mwd )
-                print mwd.poorSignalQuality, mwd.attentionESense, mwd.meditationESense, mwd.delta, mwd.theta
+                print( mwd.poorSignalQuality, mwd.attentionESense, mwd.meditationESense, mwd.delta, mwd.theta )
                 attentionESense.append( mwd.attentionESense );
                 meditationESense.append( mwd.meditationESense );
                 delta.append( mwd.delta )
@@ -57,7 +58,7 @@ def main():
                     delta.pop( 0 )
                     theta.pop( 0 )
             except Exception as e:
-                print e
+                print( e )
                 break
         mw.disconnect()
 

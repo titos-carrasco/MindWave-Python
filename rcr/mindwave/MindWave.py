@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
 import threading
 import serial
-import sys
 import time
 
 class MindWaveData:
@@ -39,7 +39,7 @@ class MindWave():
 
     def connect( self ):
         if( self.connected ):
-            print time.time(), "- MindWave Connect(): Ya se encuentra conectado a", self.port
+            print( "MindWave Connect(): Ya se encuentra conectado a", self.port )
             return True
 
         self.mwd = MindWaveData()
@@ -50,8 +50,7 @@ class MindWave():
         self.bytesLeidos = 0
         self.bytesPerdidos = 0
 
-        print "MindWave Connect(): Intentando conectar a", self.port, " ...",
-        sys.stdout.flush()
+        print( "MindWave Connect(): Intentando conectar a", self.port, " ...", end='' )
         try:
             self.conn = serial.Serial( self.port, baudrate=115200, bytesize=8,
                                        parity='N', stopbits=1, timeout=0.1 )
@@ -60,13 +59,12 @@ class MindWave():
             self.connected = True
         except Exception as e:
             self.conn = None
-            print e
+            print( e )
             return False
-        print "OK"
+        print( "OK" )
 
         #resetea conexión anterior
-        print "MindWave Connect(): Limpiando conexión previa ...",
-        sys.stdout.flush()
+        print( "MindWave Connect(): Limpiando conexión previa ...", end='' )
         try:
             # request "Disconnect"
             self.conn.write( bytearray( [ 0xc1 ] ) )
@@ -76,23 +74,21 @@ class MindWave():
             self.conn.close()
             self.conn = None
             self.connected = False
-            print e
+            print( e )
             return False
-        print "OK"
+        print( "OK" )
 
         # conecta al headset
         try:
             # especifica un Global Headset Unique Identifier (ghid)
             if( self.ghid != 0x0000 ):
-                print "MindWave Connect(): Enlazando headset ",
-                sys.stdout.flush()
+                print( "MindWave Connect(): Enlazando headset ", end='' )
                 # request "Connect"
                 self.conn.write( bytearray( [ 0xc0, ( self.ghid >> 8 ) & 0xFF, self.ghid & 0xFF ] ) )
                 self.conn.flush()
             # busca un Global Headset Unique Identifier (ghid)
             else:
-                print "MindWave Connect(): Buscando headset ",
-                sys.stdout.flush()
+                print( "MindWave Connect(): Buscando headset ", end='' )
                 # request "Auto-Connect"
                 self.conn.write( bytearray( [ 0xc2 ] ) )
                 self.conn.flush()
@@ -100,13 +96,12 @@ class MindWave():
             self.conn.close()
             self.conn = None
             self.connected = False
-            print e
+            print( e )
             return False
 
         # esperamos la respuesta del dongle
         while True:
-            sys.stdout.write( "." )
-            sys.stdout.flush()
+            print( ".", end = '' )
 
             # lee respuesta
             payload, err = self._getPayload()
@@ -143,34 +138,31 @@ class MindWave():
             self.conn.close()
             self.conn = None
             self.connected = False
-            print err
+            print( err )
             return False
-        print "OK"
+        print( "OK" )
 
         # levantamos la tarea de apoyo
-        print "MindWave Connect(): Levantando tarea de lectura de datos ...",
-        sys.stdout.flush()
+        print( "MindWave Connect(): Levantando tarea de lectura de datos ...", end='' )
         self.tParser = threading.Thread( target=self._TParser, args=(), name="_TParser" )
         self.tParser.start()
         while ( not self.tRunning ):
             time.sleep( 0.0001 )
-        print "OK"
+        print( "OK" )
 
         return True
 
     def disconnect( self ):
         if( self.connected ):
-            print "MindWave Disconnect(): Deteniendo Tarea ...",
-            sys.stdout.flush()
+            print( "MindWave Disconnect(): Deteniendo Tarea ...", end='' )
             self.tRunning = False
             self.tParser.join()
             self.tParser = None
             self.queue = bytearray()
-            print "OK"
+            print( "OK" )
 
             # request "Disconnect"
-            print "MindWave Disconnect(): Desconectando headset y cerrando puerta ...",
-            sys.stdout.flush()
+            print( "MindWave Disconnect(): Desconectando headset y cerrando puerta ...", end='' )
             try:
                 self.conn.write( bytearray( [ 0xc1 ] ) )
                 time.sleep( 1 )
@@ -180,10 +172,10 @@ class MindWave():
             self.connected = False
             self.conn = None
 
-            print "OK"
-            print "Bytes Leidos   :", self.bytesLeidos
-            print "Bytes Perdidos :", self.bytesPerdidos
-            print threading.enumerate()
+            print( "OK" )
+            print( "Bytes Leidos   :", self.bytesLeidos )
+            print( "Bytes Perdidos :", self.bytesPerdidos )
+            print( threading.enumerate() )
 
     def isConnected( self ):
         return self.connected
@@ -273,7 +265,7 @@ class MindWave():
         while( self.tRunning ):
             err = self._parsePayload()
             if( err != None ):
-                print "TParser: ", err
+                print( "TParser: ", err )
 
     def _parsePayload( self ):
         payload, err = self._getPayload()
@@ -336,6 +328,6 @@ class MindWave():
                 # elif( code == 0x81 ):  # eeg power struct (legacy float)
                 # elif( code == 0x86 ):  # rrinterval (0 to 65535)
                 else:
-                    print "ExCodeLevel: %02x, Code: %02x, Data: [%s]" % ( exCodeLevel, code, ''.join(format(x, '02X') for x in data) )
+                    print( "ExCodeLevel: %02x, Code: %02x, Data: [%s]" % ( exCodeLevel, code, ''.join(format(x, '02X') for x in data) ) )
         self.mutex.release()
         return None

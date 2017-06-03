@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
 import time
 
 from rcr.mindwave.MindWave import *
@@ -14,20 +15,21 @@ def main():
         t = time.time()
         while( time.time() -t < 10 ):
             mw.fillMindWaveData( mwd )
-            print mw.getGlobalHeadsetID(),
-            print mwd.poorSignalQuality,
-            print mwd.attentionESense,
-            print mwd.meditationESense,
-            print mwd.blinkStrength,
-            print mwd.rawWave16Bit,
-            print mwd.delta,
-            print mwd.theta,
-            print mwd.lowAlpha,
-            print mwd.highAlpha,
-            print mwd.lowBeta,
-            print mwd.highBeta,
-            print mwd.lowGamma,
-            print mwd.midGamma
+            print(  mw.getGlobalHeadsetID(),
+                    mwd.poorSignalQuality,
+                    mwd.attentionESense,
+                    mwd.meditationESense,
+                    mwd.blinkStrength,
+                    mwd.rawWave16Bit,
+                    mwd.delta,
+                    mwd.theta,
+                    mwd.lowAlpha,
+                    mwd.highAlpha,
+                    mwd.lowBeta,
+                    mwd.highBeta,
+                    mwd.lowGamma,
+                    mwd.midGamma
+            )
             time.sleep( 0.0001 )
         mw.disconnect()
 
