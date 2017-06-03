@@ -15,11 +15,10 @@ def main():
     theta = []
 
     npts = 30
-    t = time.time()
     mw = MindWave( "/dev/ttyUSB0", 1000, 0x0000 )
     if( mw.connect() ):
         mwd = MindWaveData()
-        while( time.time() - t < 180 ):
+        while( True ):
             try:
                 mw.fillMindWaveData( mwd )
                 print mwd.poorSignalQuality, mwd.attentionESense, mwd.meditationESense, mwd.delta, mwd.theta

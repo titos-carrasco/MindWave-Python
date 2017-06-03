@@ -28,6 +28,7 @@ def main():
             print mwd.highBeta,
             print mwd.lowGamma,
             print mwd.midGamma
+            time.sleep( 0.0001 )
         mw.disconnect()
 
 

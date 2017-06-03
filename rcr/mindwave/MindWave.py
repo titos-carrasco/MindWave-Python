@@ -8,7 +8,7 @@ import time
 
 class MindWaveData:
     def __init__( self ):
-        self.poorSignalQuality = 0           # byte      (0 <=> 200) 0=OK; 200=sensor sin contacto con la piel
+        self.poorSignalQuality = 200         # byte      (0 <=> 200) 0=OK; 200=sensor sin contacto con la piel
         self.attentionESense = 0             # byte      (1 <=> 100) 0=no confiable
         self.meditationESense = 0            # byte      (1 <=> 100) 0=no confiable
         self.blinkStrength = 0               # byte      (1 <=> 255)
@@ -27,33 +27,39 @@ class MindWave():
         self.port = port
         self.timeout = timeout
         self.ghid = ghid
-        self.connected = False
-        self.conn = None
         self.mutex = threading.Lock()
+        self.connected = False
         self.mwd = MindWaveData()
-        self.npacketsOk = 0
-        self.npacketsErr = 0
-        self.thread = None
+        self.conn = None
+        self.tRunning = False
+        self.tParser = None
+        self.queue = None
+        self.bytesLeidos = 0
+        self.bytesPerdidos = 0
 
     def connect( self ):
         if( self.connected ):
-            print "MindWave Connect(): Ya se encuentra conectado a", self.port
+            print time.time(), "- MindWave Connect(): Ya se encuentra conectado a", self.port
             return True
 
-        self.conn = None
         self.mwd = MindWaveData()
-        self.npacketsOk = 0
-        self.npacketsErr = 0
-        self.thread = None
+        self.conn = None
+        self.tRunning = False
+        self.tParser = None
+        self.queue = bytearray()
+        self.bytesLeidos = 0
+        self.bytesPerdidos = 0
 
         print "MindWave Connect(): Intentando conectar a", self.port, " ...",
         sys.stdout.flush()
         try:
-            conn = serial.Serial( self.port, baudrate=115200, bytesize=8,
-                                  parity='N', stopbits=1, timeout=0 )
-            conn.flushInput()
-            conn.flushOutput()
+            self.conn = serial.Serial( self.port, baudrate=115200, bytesize=8,
+                                       parity='N', stopbits=1, timeout=0.1 )
+            self.conn.flushInput()
+            self.conn.flushOutput()
+            self.connected = True
         except Exception as e:
+            self.conn = None
             print e
             return False
         print "OK"
@@ -63,36 +69,41 @@ class MindWave():
         sys.stdout.flush()
         try:
             # request "Disconnect"
-            conn.write( bytearray( [ 0xc1 ] ) )
+            self.conn.write( bytearray( [ 0xc1 ] ) )
             time.sleep( 1 )
-            conn.flushInput()
+            self.conn.flushInput()
         except Exception as e:
-            conn.close()
+            self.conn.close()
+            self.conn = None
+            self.connected = False
             print e
             return False
         print "OK"
 
-        # conecta con/sin Global Headset Unique Identifier (ghid)
+        # conecta al headset
         try:
+            # especifica un Global Headset Unique Identifier (ghid)
             if( self.ghid != 0x0000 ):
                 print "MindWave Connect(): Enlazando headset ",
                 sys.stdout.flush()
                 # request "Connect"
-                conn.write( bytearray( [ 0xc0, ( self.ghid >> 8 ) & 0xFF, self.ghid & 0xFF ] ) )
-                conn.flush()
+                self.conn.write( bytearray( [ 0xc0, ( self.ghid >> 8 ) & 0xFF, self.ghid & 0xFF ] ) )
+                self.conn.flush()
+            # busca un Global Headset Unique Identifier (ghid)
             else:
                 print "MindWave Connect(): Buscando headset ",
                 sys.stdout.flush()
                 # request "Auto-Connect"
-                conn.write( bytearray( [ 0xc2 ] ) )
-                conn.flush()
+                self.conn.write( bytearray( [ 0xc2 ] ) )
+                self.conn.flush()
         except Exception as e:
-            conn.close()
+            self.conn.close()
+            self.conn = None
+            self.connected = False
             print e
             return False
 
         # esperamos la respuesta del dongle
-        self.conn = conn
         while True:
             sys.stdout.write( "." )
             sys.stdout.flush()
@@ -123,7 +134,7 @@ class MindWave():
                 if( payload[2] == 0x00 ):       # dongle in stand by mode
                     break
                 else:                           # searching
-                    time.sleep( 0 )
+                    time.sleep( 0.0001 )
             else:
                 err = "ErrInvResponse"
                 break
@@ -131,25 +142,30 @@ class MindWave():
         if( err != None ):
             self.conn.close()
             self.conn = None
+            self.connected = False
             print err
             return False
-        print " OK"
-        self.connected = True
+        print "OK"
 
-        print "MindWave Connect(): Levantando tarea de lectura de datos"
-        self._trunning = False
-        self._thread = threading.Thread( target=self._TRead, args=(), name="TRead" )
-        self._thread.start()
-        while( not self._trunning ):
-            time.sleep( 0.1 )
+        # levantamos la tarea de apoyo
+        print "MindWave Connect(): Levantando tarea de lectura de datos ...",
+        sys.stdout.flush()
+        self.tParser = threading.Thread( target=self._TParser, args=(), name="_TParser" )
+        self.tParser.start()
+        while ( not self.tRunning ):
+            time.sleep( 0.0001 )
+        print "OK"
+
         return True
 
     def disconnect( self ):
         if( self.connected ):
             print "MindWave Disconnect(): Deteniendo Tarea ...",
             sys.stdout.flush()
-            self._trunning = False
-            self._thread.join()
+            self.tRunning = False
+            self.tParser.join()
+            self.tParser = None
+            self.queue = bytearray()
             print "OK"
 
             # request "Disconnect"
@@ -163,9 +179,11 @@ class MindWave():
                 pass
             self.connected = False
             self.conn = None
+
             print "OK"
-            print "Paquetes Buenos:", self.npacketsOk
-            print "Paquetes Error :", self.npacketsErr
+            print "Bytes Leidos   :", self.bytesLeidos
+            print "Bytes Perdidos :", self.bytesPerdidos
+            print threading.enumerate()
 
     def isConnected( self ):
         return self.connected
@@ -191,30 +209,76 @@ class MindWave():
         self.mutex.release()
 
     # privadas
-    def _TRead( self, *args ):
-        self._trunning = True
-        while self._trunning:
-            #print "TRead"
-            #sys.stdout.flush()
+    def _getByte( self ):
+        while( True ):
+            if( self.conn.in_waiting > 0 ):
+                data = self.conn.read( self.conn.in_waiting )
+                if( type( data ) == str ):
+                    self.queue = self.queue + bytearray( data )
+                else:
+                    self.queue = self.queue + data
+                self.bytesLeidos = self.bytesLeidos + len( data )
+            if( len( self.queue ) > 0 ):
+                return self.queue.pop( 0 )
+            time.sleep( 0.0001 )
 
-            # lee y procesa paquete recibido
+    def _getPayload( self ):
+        # 0xaa 0xaa [0xaa]*
+        scanning = True
+        while( scanning ):
+            b = self._getByte()
+            if( b == 0xaa ):
+                b = self._getByte()
+                if( b == 0xaa ):
+                    while( scanning ):
+                        plength = self._getByte()
+                        if( plength != 0xaa ):
+                            scanning = False
+                        else:
+                            self.bytesPerdidos = self.bytesPerdidos + 1
+                else:
+                    self.bytesPerdidos = self.bytesPerdidos + 2
+            else:
+                self.bytesPerdidos = self.bytesPerdidos + 1
+
+        # packet length
+        if( plength <= 0 or plength >= 0xaa ):
+            self.bytesPerdidos = self.bytesPerdidos + 1
+            return None, "ErrInvPLength (%02X)" % plength
+
+        # payload
+        payload = bytearray( plength )
+        for i in range( plength ):
+            payload[i] = self._getByte()
+
+        # checksum
+        checksum = self._getByte()
+        suma = 0
+        for i in range( plength ):
+            suma = suma + payload[i]
+        suma = ( ~( suma & 0xff ) ) & 0xff
+        if( checksum != suma ):
+            self.bytesPerdidos = self.bytesPerdidos + 1 + plength + 1
+            return None, "ErrChecksum (%02X/%02X)" % (checksum, suma)
+
+        # ok
+        return payload, None
+
+    def _TParser( self, *args ):
+        self.bytesLeidos = 0
+        self.bytesPerdidos = 0
+        self.queue = bytearray()
+        self.conn.flushInput()
+        self.tRunning = True
+        while( self.tRunning ):
             err = self._parsePayload()
             if( err != None ):
-                #print "MindWave Task: ", err
-                self.npacketsErr = self.npacketsErr + 1
-            else:
-                self.npacketsOk = self.npacketsOk + 1
-
-            # requerido para el scheduler
-            time.sleep( 0.00001 )
+                print "TParser: ", err
 
     def _parsePayload( self ):
-        try:
-            payload, err = self._getPayload()
-            if( err != None ):
-                return err
-        except Exception as e:
-            return e
+        payload, err = self._getPayload()
+        if( err != None ):
+            return err
 
         if( payload[0] == 0xd2 ):       # disconnected
             return "ErrDisconnected"
@@ -275,47 +339,3 @@ class MindWave():
                     print "ExCodeLevel: %02x, Code: %02x, Data: [%s]" % ( exCodeLevel, code, ''.join(format(x, '02X') for x in data) )
         self.mutex.release()
         return None
-
-    def _readByte( self ):
-        while( self.conn.in_waiting == 0 ):
-            pass
-        b = self.conn.read( 1 )
-        if( type(b) is str ):
-            b = ord(b)
-        else:
-            b = b[0]
-        return b
-
-    def _getPayload( self ):
-        # 0xaa 0xaa [0xaa]*
-        scanning = True
-        while( scanning ):
-            b = self._readByte()
-            if( b == 0xaa ):
-                b = self._readByte()
-                if( b == 0xaa ):
-                    while( scanning ):
-                        plength = self._readByte()
-                        if( plength != 0xaa ):
-                            scanning = False
-
-        # packet length
-        if( plength <= 0 or plength >= 0xaa ):
-            return None, "ErrInvPLength (%02X)" % plength
-
-        # payload
-        payload = bytearray( plength )
-        for i in range( plength ):
-            payload[i] = self._readByte()
-
-        # checksum
-        checksum = self._readByte()
-        suma = 0
-        for i in range( plength ):
-            suma = suma + payload[i]
-        suma = ( ~( suma & 0xff ) ) & 0xff
-        if( checksum != suma ):
-            return None, "ErrChecksum (%02X/%02X)" % (checksum, suma)
-
-        # ok
-        return payload, None
