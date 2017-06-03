@@ -1,18 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import time
+
 from rcr.mindwave.MindWave import *
-from rcr.utils import Utils
 
 def main():
     # colocar el headset unos 4 minutos antes para que se estabilice
     # el Global Headset Unique Identifier está en la zona de la batería
-    mw = MindWave( "/dev/ttyUSB0", 1000, 0x00, 0x00 )
+    mw = MindWave( "/dev/ttyUSB0", 1000, 0x0000 )
     if( mw.connect() ):
         mwd = MindWaveData()
-        for i in range( 1000 ):
-            mwd = mw.fillMindWaveData( mwd )
-            print "Main [", i, "]:", mw.getGlobalHeadsetID(),
+        t = time.time()
+        while( time.time() -t < 10 ):
+            mw.fillMindWaveData( mwd )
+            print mw.getGlobalHeadsetID(),
             print mwd.poorSignalQuality,
             print mwd.attentionESense,
             print mwd.meditationESense,
@@ -26,10 +28,6 @@ def main():
             print mwd.highBeta,
             print mwd.lowGamma,
             print mwd.midGamma
-
-            # requerido para el scheduler
-            Utils.pause( 10 )
-        print i, "lecturas realizadas"
         mw.disconnect()
 
 

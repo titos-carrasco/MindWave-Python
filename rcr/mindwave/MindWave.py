@@ -4,9 +4,7 @@
 import threading
 import serial
 import sys
-
-from rcr.utils.Serial import Serial
-from rcr.utils import Utils
+import time
 
 class MindWaveData:
     def __init__( self ):
@@ -25,56 +23,69 @@ class MindWaveData:
         self.midGamma = 0                    # uint32    (0 <=> 16777215)
 
 class MindWave():
-    def __init__( self, port, timeout, ghid_high, ghid_low ):
+    def __init__( self, port, timeout, ghid ):
         self.port = port
         self.timeout = timeout
-        self.ghid_high = ghid_high
-        self.ghid_low = ghid_low
+        self.ghid = ghid
         self.connected = False
         self.conn = None
         self.mutex = threading.Lock()
         self.mwd = MindWaveData()
+        self.npacketsOk = 0
+        self.npacketsErr = 0
+        self.thread = None
 
     def connect( self ):
         if( self.connected ):
             print "MindWave Connect(): Ya se encuentra conectado a", self.port
             return True
 
-        print "MindWave Connect(): Intentando conectar a", self.port, " =>",
+        self.conn = None
+        self.mwd = MindWaveData()
+        self.npacketsOk = 0
+        self.npacketsErr = 0
+        self.thread = None
+
+        print "MindWave Connect(): Intentando conectar a", self.port, " ...",
         sys.stdout.flush()
         try:
-            conn = Serial( self.port, 115200, self.timeout )
+            conn = serial.Serial( self.port, baudrate=115200, bytesize=8,
+                                  parity='N', stopbits=1, timeout=0 )
+            conn.flushInput()
+            conn.flushOutput()
         except Exception as e:
             print e
             return False
         print "OK"
 
         #resetea conexión anterior
-        print "MindWave Connect(): Limpiando conexión previa =>",
+        print "MindWave Connect(): Limpiando conexión previa ...",
         sys.stdout.flush()
-        conn.flushRead( 2000 )
         try:
             # request "Disconnect"
             conn.write( bytearray( [ 0xc1 ] ) )
+            time.sleep( 1 )
+            conn.flushInput()
         except Exception as e:
             conn.close()
             print e
             return False
-        conn.flushRead( 2000 )
         print "OK"
 
         # conecta con/sin Global Headset Unique Identifier (ghid)
         try:
-            if( self.ghid_high != 0  or self.ghid_low != 0):
-                print "MindWave Connect(): Enlazando headset =>",
+            if( self.ghid != 0x0000 ):
+                print "MindWave Connect(): Enlazando headset ",
                 sys.stdout.flush()
                 # request "Connect"
-                conn.write( bytearray( [ 0xc0, self.ghid_high, self.ghid_low ] ) )
+                conn.write( bytearray( [ 0xc0, ( self.ghid >> 8 ) & 0xFF, self.ghid & 0xFF ] ) )
+                conn.flush()
             else:
-                print "MindWave Connect(): Buscando headset =>",
+                print "MindWave Connect(): Buscando headset ",
                 sys.stdout.flush()
                 # request "Auto-Connect"
                 conn.write( bytearray( [ 0xc2 ] ) )
+                conn.flush()
         except Exception as e:
             conn.close()
             print e
@@ -94,8 +105,7 @@ class MindWave():
             # analiza respuesta
             cmd = payload[0]
             if( cmd == 0xd0 ):                  # headset found and connected
-                self.ghid_high = payload[2]
-                self.ghid_low = payload[3]
+                self.ghid = ( payload[2] << 8 ) + payload[3]
                 break
             if( cmd == 0xd1 ):                  # headset not found
                 if( payload[1] == 0x00 ):
@@ -113,8 +123,9 @@ class MindWave():
                 if( payload[2] == 0x00 ):       # dongle in stand by mode
                     break
                 else:                           # searching
-                    Utils.pause( 1 )
+                    time.sleep( 0 )
             else:
+                err = "ErrInvResponse"
                 break
 
         if( err != None ):
@@ -122,40 +133,45 @@ class MindWave():
             self.conn = None
             print err
             return False
-        print "OK"
+        print " OK"
         self.connected = True
 
         print "MindWave Connect(): Levantando tarea de lectura de datos"
         self._trunning = False
-        self._tread = threading.Thread( target=self._TRead, args=(), name="TRead" )
-        self._tread.start()
+        self._thread = threading.Thread( target=self._TRead, args=(), name="TRead" )
+        self._thread.start()
         while( not self._trunning ):
-            Utils.pause( 10 )
+            time.sleep( 0.1 )
         return True
 
     def disconnect( self ):
         if( self.connected ):
-            print "MindWave Disconnect(): Deteniendo Tarea =>",
+            print "MindWave Disconnect(): Deteniendo Tarea ...",
             sys.stdout.flush()
             self._trunning = False
-            self._tread.join()
+            self._thread.join()
             print "OK"
 
             # request "Disconnect"
-            print "MindWave Disconnect(): Desconectando headset y cerrando puerta =>",
+            print "MindWave Disconnect(): Desconectando headset y cerrando puerta ...",
             sys.stdout.flush()
-            self.conn.write( bytearray( [ 0xc1 ] ) )
-            self.conn.flushRead( 1000 )
-            self.conn.close()
+            try:
+                self.conn.write( bytearray( [ 0xc1 ] ) )
+                time.sleep( 1 )
+                self.conn.close()
+            except Exception as e:
+                pass
             self.connected = False
             self.conn = None
             print "OK"
+            print "Paquetes Buenos:", self.npacketsOk
+            print "Paquetes Error :", self.npacketsErr
 
     def isConnected( self ):
         return self.connected
 
     def getGlobalHeadsetID( self ):
-        return "%02X%02X" % ( self.ghid_high, self.ghid_low )
+        return "%04X" % self.ghid
 
     def fillMindWaveData( self, mwd ):
         self.mutex.acquire()
@@ -173,7 +189,6 @@ class MindWave():
         mwd.lowGamma = self.mwd.lowGamma
         mwd.midGamma = self.mwd.midGamma
         self.mutex.release()
-        return mwd
 
     # privadas
     def _TRead( self, *args ):
@@ -185,10 +200,13 @@ class MindWave():
             # lee y procesa paquete recibido
             err = self._parsePayload()
             if( err != None ):
-                print "MindWave Task: ", err
+                #print "MindWave Task: ", err
+                self.npacketsErr = self.npacketsErr + 1
+            else:
+                self.npacketsOk = self.npacketsOk + 1
 
             # requerido para el scheduler
-            Utils.pause( 10 )
+            time.sleep( 0.00001 )
 
     def _parsePayload( self ):
         try:
@@ -258,25 +276,40 @@ class MindWave():
         self.mutex.release()
         return None
 
+    def _readByte( self ):
+        while( self.conn.in_waiting == 0 ):
+            pass
+        b = self.conn.read( 1 )
+        if( type(b) is str ):
+            b = ord(b)
+        else:
+            b = b[0]
+        return b
+
     def _getPayload( self ):
-        # 0xaa 0xaa
-        while( True ):
-            b = self.conn.read( 1 )[0]
+        # 0xaa 0xaa [0xaa]*
+        scanning = True
+        while( scanning ):
+            b = self._readByte()
             if( b == 0xaa ):
-                b = self.conn.read( 1 )[0]
+                b = self._readByte()
                 if( b == 0xaa ):
-                    break
+                    while( scanning ):
+                        plength = self._readByte()
+                        if( plength != 0xaa ):
+                            scanning = False
 
         # packet length
-        plength = self.conn.read( 1 )[0]
         if( plength <= 0 or plength >= 0xaa ):
             return None, "ErrInvPLength (%02X)" % plength
 
         # payload
-        payload = self.conn.read( plength )
+        payload = bytearray( plength )
+        for i in range( plength ):
+            payload[i] = self._readByte()
 
         # checksum
-        checksum = self.conn.read( 1 )[0]
+        checksum = self._readByte()
         suma = 0
         for i in range( plength ):
             suma = suma + payload[i]
